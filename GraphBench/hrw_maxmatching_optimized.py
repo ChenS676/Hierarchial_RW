@@ -234,10 +234,11 @@ class Transformer(nn.Module):
         self.norm_weight = nn.Parameter(torch.ones(hidden_dim))
 
     def forward(self, x, anon_indices, source_nodes=None):
+        # x: (N*W, L, D) — treat each walk independently
         batch_size, ctx_len, _ = x.shape
         for depth, idx in enumerate(reversed(anon_indices)):
             for l in self.layers:
-                x = l(x, idx)
+                x = l(x, idx) # single flat attention over walk tokens
             if depth < len(anon_indices) - 1:
                 x = x[:, -1, :]
                 x = F.rms_norm(x, [self.hidden_dim], eps=1e-5) * self.norm_weight
