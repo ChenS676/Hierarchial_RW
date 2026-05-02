@@ -746,7 +746,7 @@ def main():
     if config["use_rwse"]:   pe_tag.append(f"rwse{config['rwse_dim']}")
     pe_str   = "+".join(pe_tag) if pe_tag else "none"
     run_name = (
-        f"NWPE{config['use_nw_pe']}_"
+        f"HRW_{config['dataset_name']}_"
         f"PE-{pe_str}_"
         f"HRW_BS{config['batch_size']}_HD{config['hidden_dim']}_"
         f"NW{config['num_walks']}_WL{config['walk_length']}_"

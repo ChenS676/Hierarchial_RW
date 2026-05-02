@@ -1,0 +1,11 @@
+model,dataset,seed,hidden_dim,layers,adam_max_lr,batch_size,epochs,dropout,train_subset_ratio,eval_every_steps,use_pe,pe_type,pe_dim,best_val_f1,best_test_f1,best_val_step,final_val_f1,final_test_f1,total_params,runtime_sec
+GIN,maxclique_hard,2025,256,6,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7799,0.2088,3096,0.7638,0.1291,2573064,819.6
+GT,maxclique_hard,2025,256,4,8,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7552,0.098,387,0.0,0.0,2573570,1145.9
+GIN,maxclique_hard,2026,256,6,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7829,0.2036,3870,0.7829,0.1452,2573064,737.7
+GT,maxclique_hard,2026,256,4,8,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7552,0.098,387,0.0,0.0,2573570,1079.9
+GIN,maxclique_hard,2027,256,6,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7782,0.2033,3096,0.7769,0.1217,2573064,737.3
+GT,maxclique_hard,2027,256,4,8,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7552,0.098,387,0.7552,0.098,2573570,600.5
+GIN,maxclique_hard,2025,256,6,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7769,0.2063,3096,0.7676,0.1465,2573064,611.9
+GT,maxclique_hard,2025,256,4,8,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7552,0.098,387,0.0,0.0,2573570,869.9
+GIN,maxclique_hard,2026,256,6,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7752,0.2044,1548,0.7613,0.1406,2573064,582.6
+GT,maxclique_hard,2027,256,4,8,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7552,0.098,387,0.7552,0.098,2573570,658.6

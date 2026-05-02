@@ -1,0 +1,11 @@
+model,dataset,seed,hidden_dim,layers,adam_max_lr,batch_size,epochs,dropout,train_subset_ratio,eval_every_steps,use_pe,pe_type,pe_dim,best_val_f1,best_test_f1,best_val_step,final_val_f1,final_test_f1,total_params,runtime_sec
+GIN,maxclique_medium,2025,256,6,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7786,0.2585,1935,0.7629,0.1861,2573064,860.0
+GT,maxclique_medium,2025,256,4,8,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7551,0.1443,387,0.0,0.0,2573570,1202.8
+GIN,maxclique_medium,2026,256,6,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7722,0.2604,774,0.7682,0.2001,2573064,780.0
+GT,maxclique_medium,2026,256,4,8,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7551,0.1443,387,0.7551,0.1443,2573570,1152.3
+GIN,maxclique_medium,2027,256,6,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7785,0.2588,3483,0.7645,0.2042,2573064,764.7
+GT,maxclique_medium,2027,256,4,8,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7551,0.1443,387,0.7551,0.1443,2573570,533.4
+GIN,maxclique_medium,2025,256,6,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7739,0.2595,3870,0.7739,0.2089,2573064,644.2
+GT,maxclique_medium,2025,256,4,8,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7551,0.1443,3096,0.0,0.0,2573570,917.0
+GIN,maxclique_medium,2026,256,6,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7783,0.2607,3483,0.7672,0.1993,2573064,621.1
+GT,maxclique_medium,2027,256,4,8,0.0001,256,10,0.1,0.1,387,False,rwse,16,0.7551,0.1443,387,0.7551,0.1443,2573570,680.3

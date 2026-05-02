@@ -1,0 +1,4 @@
+run_name,dataset,seed,hidden_dim,layers,num_heads,num_walks,walk_length,recurrent_steps,use_pe,pe_type,pe_dim,use_nw_pe,nw_pe_window,batch_size,muon_max_lr,adam_max_lr,mlp_lr,epochs,dropout,train_subset_ratio,eval_every_steps,best_val_f1,best_test_f1,best_val_step,final_val_f1,final_test_f1,total_params,runtime_sec
+HRW_bipartite_matching_easy_h256_L1_H8_w8x16_rs1_nope_nwpe0_s2025,bipartite_matching_easy,2025,256,1,8,8,16,1,False,rwse,16,False,7,64,0.001,0.0001,0.0001,10,0.1,0.1,1547,0.6858,0.5108,15470,0.6859,0.5111,1182977,831.6
+GIN_bipartite_matching_easy_h256_L6_nope_s2025,bipartite_matching_easy,2025,256,6,False,rwse,16,64,0.0003,10,0.1,0.1,1547,0.91,0.791,15470,0.91,0.7843,2638343,362.6
+GT_bipartite_matching_easy_h256_L4_H8_nope_s2025,bipartite_matching_easy,2025,256,4,8,False,rwse,16,64,0.0003,10,0.1,0.1,1547,0.8898,0.7662,15470,0.8898,0.72,2638849,392.3
