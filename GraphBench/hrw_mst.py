@@ -529,9 +529,9 @@ def main():
     parser.add_argument("--test_batch_size",     type=int,   default=32)
     parser.add_argument("--train_subset_ratio",  type=float, default=0.5)
     # Architecture
-    parser.add_argument("--hidden_dim",          type=int,   default=256)
-    parser.add_argument("--encoding_dim",        type=int,   default=256)
-    parser.add_argument("--layers",              type=int,   default=1)
+    parser.add_argument("--hidden_dim",          type=int,   default=128)
+    parser.add_argument("--encoding_dim",        type=int,   default=128)
+    parser.add_argument("--layers",              type=int,   default=3)
     parser.add_argument("--num_heads",           type=int,   default=16)
     parser.add_argument("--dropout",             type=float, default=0.1)
     # Optimisation
@@ -541,7 +541,7 @@ def main():
     parser.add_argument("--mlp_lr",              type=float, default=1e-3)
     parser.add_argument("--grad_clip_norm",      type=float, default=0.5)
     # Random walk / PE
-    parser.add_argument("--walk_length",         type=int,   default=8)
+    parser.add_argument("--walk_length",         type=int,   default=32)
     parser.add_argument("--num_walks",           type=int,   default=8)
     parser.add_argument("--recurrent_steps",     type=int,   default=1)
     parser.add_argument("--use_pe",              type=bool,  default=False)
