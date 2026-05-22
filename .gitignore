@@ -47,3 +47,5 @@ wandb/
 
 # Ignore all PyTorch model files in any directory
 **/*.pt
+ablation_study_paper/.venv
+**/dataset
