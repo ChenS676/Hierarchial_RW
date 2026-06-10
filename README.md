@@ -1,252 +1,231 @@
-# 🧪 ProbGT — Probabilistic Graph Transformer for Molecular Property Prediction
+# Hierarchical Random Walk (HierarchialRW)
 
-## 📌 Overview
+A Transformer-based graph encoder that captures structure via **anonymized random walks** instead of message passing. Node neighbourhoods are encoded by sampling Node2Vec-style walks, anonymizing node IDs to relative first-occurrence indices, and processing the resulting sequences through a standard Transformer with Rotary Positional Embeddings (RoPE).
 
-**ProbGT** is a research framework for molecular property prediction that combines:
+## Repository layout
 
-* Self-supervised pretraining (SSL) on 3D molecular conformer ensembles
-* Supervised fine-tuning on downstream tasks (regression & classification)
-* Multi-modal representations:
-
-  * 1D: SMILES tokens
-  * 2D: GNN / subgraphs
-  * 3D: SchNet / GEMNet
-* Subgraph-augmented Transformer architecture (ESAN-style)
-
-The framework targets datasets such as:
-
-* GEOM
-* KRAKEN
-* DRUGS (MARCEL)
-* MoleculeNet (BACE, BBBP, HIV, etc.)
-* ZINC
-* EXP
-
----
-
-## 📁 Repository Structure
-
-```bash
-ProbGT-boshra-c-free-v2/
-├── main.py                     # Batch runner over datasets & seeds
-├── pretrain.py                 # SSL pretraining logic
-├── finetune.py                 # Supervised fine-tuning
-├── baseline.py                 # Baseline models
-├── load_evaluation.py          # Evaluate saved checkpoints
-├── playground.py               # Experimental sandbox
-├── sweep.py / sweep_run.py     # W&B hyperparameter sweeps
-├── tokenizer.py                # SMILES tokenizer
-├── tokenizer.json              # Tokenizer vocabulary
+```
+Hierarchial_RW/
+├── Plaintoid/          # Link prediction on Planetoid graphs (Cora, CiteSeer, PubMed)
+│   ├── model.py            model architecture
+│   ├── train.py            HeART training (standard)
+│   ├── train_opt.py        HeART training with per-epoch profiling (CPU/GPU)
+│   └── train_hrw_ablation.py  ablation: walk aggregation strategies
 │
-├── cfgs/
-│   ├── default.yaml
-│   ├── c-free-iclr/
-│   │   ├── drugs/
-│   │   ├── kraken/
-│   │   └── molnet/
-│   ├── downstream/
-│   ├── experiments/
-│   └── molmix/
+├── CityNet/            # Node classification on city road networks
+│   ├── train_hrw.py        HierarchialRW + GNN baselines on CityNetwork
+│   ├── hr_hrw_EAT.py       eccentricity / EAT analysis
+│   ├── evalutors.py        evaluation helpers
+│   └── requirements.txt
 │
-├── layers/
-│   ├── models.py
-│   ├── ssl_models.py
-│   ├── ssl_model_3d.py
-│   ├── gnn.py
-│   ├── attention.py
-│   ├── encoders.py
-│   ├── esan_models.py
-│   ├── model_3d.py
-│   ├── schnet.py
-│   ├── gemnet.py
-│   ├── gemnet_layers/
-│   └── gemnet_utils/
+├── GraphBench/         # Algorithmic graph tasks (MST, MaxClique, MaxMatching, Bridges)
+│   ├── hrw_mst.py
+│   ├── hrw_maxcliques.py
+│   ├── hrw_bridges_optimized_new.py
+│   └── hrw_maxmatching.py  (train_matching_gin.py / train_matching_gt.py for baselines)
 │
-├── preprocessing/
-│   ├── dataloaders.py
-│   ├── subgraphs.py
-│   ├── datasets/
-│   │   ├── geom.py
-│   │   ├── moleculenet.py
-│   │   ├── zinc.py
-│   │   ├── tu.py
-│   │   ├── planarsatpairsdataset.py
-│   │   └── marcel/
-│   │       ├── kraken.py
-│   │       └── drugs.py
-│   │   └── marcel_ensemble/
-│   │       ├── ensemble.py
-│   │       ├── kraken.py
-│   │       ├── drugs.py
-│   │       ├── ee.py
-│   │       ├── bde.py
-│   │       ├── samplers.py
-│   │       └── multibatch.py
-│   └── utils/
-│       ├── molecule_feats.py
-│       ├── molecule_to_data.py
-│       ├── augment.py
-│       ├── augment_conformers.py
-│       ├── create_subgraphs.py
-│       ├── scaffolds.py
-│       ├── misc.py
-│       └── target_metric.py
+├── ablation_study_paper/  # HRW vs plain RW ablation (EAT, ECC, bottleneck, coverage)
+│   ├── eval_hrw_eat_bottleneck.py
+│   ├── hr_hrw_EAT.py
+│   └── op_eval_hrw_vs_rw.py
 │
-├── utils/
-│   ├── misc.py
-│   ├── training.py
-│   ├── metrics.py
-│   ├── evaluation.py
-│   ├── masking.py
-│   ├── prop.py
-│   └── fragmentation/
+├── lrgb/               # Long Range Graph Benchmark (GraphGPS-based baselines)
+│   └── main.py
 │
-└── slurm_*.sbatch / .sh
+├── ogb/                # OGB link-prediction experiments
+└── install_uv.sh       # one-shot environment bootstrap (uv)
 ```
 
----
+## Model overview
 
-## ⚙️ Required Libraries
+| Component | Description |
+|---|---|
+| Walk sampling | Node2Vec (parameters `p`, `q`), `num_walks` walks of length `walk_length` per node |
+| Anonymization | Replaces absolute node IDs with relative first-occurrence indices — structure-only, ID-agnostic |
+| RoPE | Applied at anonymized positions, not raw sequence positions |
+| Transformer | Pre-RMSNorm, SwiGLU FFN, stochastic depth (drop-path) |
+| muP init | Maximal Update Parametrization for stable scaling |
+| Optimizer | Muon (Nesterov + orthogonalization) for matrix weights; Adam for gains, biases, and MLP |
+| Hierarchical variant | `DPCWUE` in `Plaintoid/train_opt.py` — bottom-up DP recurrence, memory O(N·W·L·D) |
 
-### Environment Setup
+## Environment setup
+
+### Option A — uv (recommended)
 
 ```bash
-conda env create -f env_pyg.yaml
-conda activate pyg
+# Install uv if needed
+curl -Ls https://astral.sh/uv/install.sh | sh
+
+# Plaintoid / ablation (Python 3.12, CUDA 12.8)
+cd Plaintoid
+uv sync
+
+# CityNet (legacy, Python 3.11, CUDA 12.4)
+cd CityNet
+bash ../install_uv.sh          # creates .venv
+pip install -r requirements.txt
 ```
 
----
-
-## 🚀 Usage
-
-All scripts follow:
+### Option B — pip (CityNet / lrgb)
 
 ```bash
-python <script>.py --cfg <config.yaml> [key=value overrides]
+pip install torch==2.5.0 torchvision==0.20.0 --index-url https://download.pytorch.org/whl/cu124
+pip install torch_geometric pyg_lib torch_scatter torch_sparse torch_cluster \
+    --find-links https://data.pyg.org/whl/torch-2.5.0+cu124.html
+pip install networkx osmnx wandb tqdm scikit-learn pandas muon-optimizer einops
 ```
 
----
+## Main commands
 
-### 1. 🔁 Pretraining (SSL)
+### Link prediction — Plaintoid (HeART)
 
 ```bash
-python pretrain.py --cfg cfgs/c-free-iclr/pretrain-molmix-3d.yaml
+cd Plaintoid
+
+# Basic run on Cora
+uv run train.py --data_name Cora --data_root data/Cora
+
+# CiteSeer with fixed splits
+uv run train.py --data_name CiteSeer --data_root data/CiteSeer \
+    --use_fixed_splits True --split_dir data/CiteSeer/fixed_splits
+
+# Tune walk parameters
+uv run train.py --data_name Cora --data_root data/Cora \
+    --walk_length 16 --num_walks 32 --node2vec_p 1.0 --node2vec_q 0.5
+
+# With Laplacian positional encodings
+uv run train.py --data_name Cora --data_root data/Cora \
+    --use_laplacian_pe True --laplacian_pe_path data/Cora/laplacian_pe.pt
+
+# With DeepWalk feature augmentation
+uv run train.py --data_name Cora --data_root data/Cora \
+    --use_deepwalk_embeds True --deepwalk_pkl_path data/Cora/deepwalk.pkl
 ```
 
-**Key options:**
+**Key arguments**
 
-* `data.dataset`: e.g. geom
-* `data.n_conformers`: default 3
-* `data.policy`: subgraph strategy
-* `data.subgraph_types`: ["3-ego", "4-ego"]
-* `data.with_3d`: true/false
-* `max_epoch`, `batch_size`, `lr`
-* `scheduler_type`
-* `save_ckpt`
-* `wandb.use_wandb`
+| Argument | Default | Description |
+|---|---|---|
+| `--data_name` | `Cora` | Dataset: `Cora`, `CiteSeer`, `PubMed` |
+| `--num_epochs` | `300` | Training epochs |
+| `--global_batch_size` | `256` | Positive-edge batch size |
+| `--walk_length` | `8` | Walk length |
+| `--num_walks` | `16` | Walks per node |
+| `--node2vec_p/q` | `1.0` | Node2Vec return/in-out parameter |
+| `--hidden_dim` | `128` | Transformer hidden dim |
+| `--num_layers` | `1` | Transformer layers |
+| `--num_heads` | `16` | Attention heads |
+| `--recurrent_steps` | `1` | Hierarchical recurrence depth |
+| `--muon_max_lr` | `1e-3` | Peak Muon learning rate |
+| `--eval_metric` | `MRR` | Early-stopping metric (`MRR`, `AUC`, `Hits@K`) |
+| `--patience` | `4` | Early-stopping patience (eval checks) |
 
----
-
-### 2. 🎯 Fine-Tuning
-
-**With pretrained model:**
+### Link prediction — with profiling (`train_opt.py`)
 
 ```bash
-python finetune.py --cfg cfgs/c-free-iclr/fft-molmix-no-sched.yaml
+cd Plaintoid
+uv run train_opt.py --data_name Cora --data_root data/Cora \
+    --recurrent_steps 3 --hidden_dim 256
+# Saves per-epoch profiling → Cora/profiling/profiling_<run_id>.csv
+# Appends run summary  → Cora/profiling/profiling_summary.csv
 ```
 
-**From scratch:**
+### Walk aggregation ablation
 
 ```bash
-python finetune.py --cfg cfgs/c-free-iclr/fft-molmix-scratch-no-sched.yaml
+cd Plaintoid
+# Default: flatten all walks into one long sequence
+uv run train_hrw_ablation.py --data_name Cora --walk_agg flatten
+
+# Alternative: process walks independently then concat
+uv run train_hrw_ablation.py --data_name Cora --walk_agg concat
 ```
 
-**MoleculeNet:**
+### Node classification — CityNet
 
 ```bash
-python main.py --cfg cfgs/c-free-iclr/molnet/fft-3d-molmix.yaml
+cd CityNet
+
+# GNN baseline
+python train_hrw.py --method gcn   --dataset paris --device 0
+python train_hrw.py --method sage  --dataset paris --device 0
+
+# HierarchialRW
+python train_hrw.py --method hierarchial_rw --dataset paris --device 0 \
+    --hierarchial_rw_walk_length 8 \
+    --hierarchial_rw_num_walks 16 \
+    --hierarchial_rw_hidden_dim 128
 ```
 
-**Key options:**
-
-* `data.dataset`
-* `load_ckpt`
-* `backbone_file`
-* `freeze_backbone`
-* `eval_test`
-* `train_subset_perc`
-* `norm_target`
-* `model.with_3d`
-* `model.model_3d`
-
----
-
-### 3. 🔄 Batch Experiments
+### GraphBench — algorithmic tasks
 
 ```bash
-python main.py
+cd GraphBench
+
+# Minimum Spanning Tree
+python hrw_mst.py
+
+# Maximum Clique
+python hrw_maxcliques.py
+
+# Bipartite Maximum Matching (HRW)
+python hrw_maxmatching.py
+
+# Bridge detection
+python hrw_bridges_optimized_new.py
+
+# GIN / GT baselines
+python train_matching_gin.py
+python train_matching_gt.py
 ```
 
-Or:
+### Ablation study (HRW vs RW)
 
 ```bash
-python main.py --cfg cfgs/c-free-iclr/drugs/fft-molmix3d.yaml
+cd ablation_study_paper
+
+# EAT + bottleneck evaluation
+uv run eval_hrw_eat_bottleneck.py
+
+# HRW vs plain RW on oracle metrics
+uv run op_eval_hrw_vs_rw.py
+
+# Single-metric plot
+uv run single_plot.py
 ```
 
----
-
-### 4. ⚡ CLI Overrides
+### Long Range Graph Benchmark (lrgb)
 
 ```bash
-python finetune.py --cfg <cfg> \
-    data.dataset=kraken_b5 \
-    batch_size=32 \
-    lr=1e-4 \
-    wandb.use_wandb=false
+cd lrgb
+conda activate lrgb
+
+# GCN on Peptides-func
+python main.py --cfg configs/GCN/peptides-func-GCN.yaml wandb.use False
+
+# SAN on PascalVOC-SP
+python main.py --cfg configs/SAN/vocsuperpixels-SAN.yaml wandb.use False
 ```
 
----
+## Logging
 
-### 5. 🧹 Data Preparation
+All training scripts log to [Weights & Biases](https://wandb.ai). Set your entity/project with:
 
 ```bash
-python main.py --cfg cfgs/experiments/prepare-data.yaml
+--wb_entity <your-entity> --wb_project <your-project>
 ```
 
-Or:
+To disable W&B:
 
 ```bash
-sbatch slurm_prepare_data.sbatch <log_prefix>
+export WANDB_MODE=offline   # or set inside the script
 ```
 
----
+## Output files
 
-### 6. 📊 Disable W&B
-
-```yaml
-wandb:
-  use_wandb: false
-```
-
-or
-
-```bash
-wandb.use_wandb=false
-```
-
----
-
-## 📝 Notes
-
-* GPU strongly recommended (CPU is very slow for 3D models)
-* FlashAttention requires:
-
-  * Compute capability ≥ 7.5
-  * CUDA ≥ 11.6
-* Default dataset path: `./data/datasets`
-* Checkpoints: `best-models/`
-* Tokenizer path: `tokenizer.json`
-
----
-
-If you want, I can further **shorten this for GitHub**, or make a **NeurIPS-style project page version** (more narrative, less engineering-heavy).
+| Path | Contents |
+|---|---|
+| `<dataset>/checkpoints/best_model_<run_id>.pth` | Best model checkpoint |
+| `<dataset>/profiling/profiling_<run_id>.csv` | Per-epoch CPU/GPU profiling |
+| `<dataset>/profiling/profiling_summary.csv` | Aggregated run summary |
+| `<dataset>/experiment_results_link_prediction_updated_final.csv` | Per-run metrics |

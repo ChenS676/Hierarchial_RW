@@ -84,8 +84,8 @@ def get_config():
     
     run_group = parser.add_argument_group('Run Configuration')
     run_group.add_argument('--seed', type=int, default=2025, help='Random seed')
-    run_group.add_argument('--num_epochs', type=int, default=300, help='Number of training epochs')
-    run_group.add_argument('--global_batch_size', type=int, default=16, help='Batch size for positive edges') #Reduce it to 4 for higher recurrence to avoid memory overflow
+    run_group.add_argument('--num_epochs', type=int, default=30, help='Number of training epochs')
+    run_group.add_argument('--global_batch_size', type=int, default=256, help='Batch size for positive edges') #Reduce it to 4 for higher recurrence to avoid memory overflow
     run_group.add_argument('--patience', type=int, default=4, help='Epochs for early stopping patience')
     run_group.add_argument('--train_edge_downsample_ratio', type=float, default=1.0, 
                            help='Ratio to downsample training edges (e.g., 0.5 for 50%%). 1.0 means no downsampling.')
@@ -128,7 +128,7 @@ def get_config():
 
     walk_group = parser.add_argument_group('Random Walk')
     walk_group.add_argument('--walk_length', type=int, default=8, help='Length of each random walk') #original 8
-    walk_group.add_argument('--num_walks', type=int, default=16, help='Number of walks per source node')  #original 8
+    walk_group.add_argument('--num_walks', type=int, default=8, help='Number of walks per source node')  #original 8
     walk_group.add_argument('--node2vec_p', type=float, default=1.0, help='Return parameter p (Node2Vec)')
     walk_group.add_argument('--node2vec_q', type=float, default=1.0, help='In-out parameter q (Node2Vec)')
     
@@ -214,14 +214,7 @@ if config['use_deepwalk_embeds']:
     data.x = combined_features
    
     print(f"Features concatenated. New feature dimension: {data.x.shape[1]}")
-# --- END OF NEW CODE ---
-# ... existing DeepWalk logic ...
 
-# --- NEW: Load and concatenate Laplacian PEs ---
-
-
-
-#------DATA PREPROCESSING----------
 undirected = None
 
 
@@ -249,7 +242,7 @@ print("="*40 + "\n")
 print(f"Nodes before removal: {data.num_nodes}")
 
 # Initialize and apply the transform
-if config['data_name'] in ['TAPE','CiteSeer']: 
+if config['data_name'] in ['TAPE']: 
     remover = T.RemoveIsolatedNodes()
     data = remover(data)
 
@@ -426,23 +419,18 @@ def get_random_walk_batch(
         walks = walks.view(num_sources, num_walks, walk_length)
         # Then flatten the last two dimensions
         rws = walks.flatten(1, 2)
-        
         # 4. Reverse the walks (Target -> Source) as required by HeART
         rws = torch.flip(rws, dims=[-1])
         
         rws_list.append(rws)
-        
         # For the next step in recurrence, the new sources are all nodes in the current walks
         if recurrent_steps > 1:
             current_sources = rws.reshape(-1)
         
-    # 5. Anonymize Walks
-    # We pass rev_walks=True because 'rws' are currently reversed (Target->Source)
+
     anon_indices_list = [anonymize_rws(rws, rev_walks=True) for rws in rws_list]
-  
-    # 6. Fetch Features
-    # Use the raw node indices from the last recurrent step
     final_raw_indices = rws_list[-1] 
+    
     batch_features = x[final_raw_indices] 
     
     return batch_features, anon_indices_list
@@ -469,12 +457,18 @@ def get_metric_score(evaluator_hit, evaluator_mrr, pos_val_pred, neg_val_pred, k
     for K in k_list:
         result[f'Hits@{K}'] = ( result_hit_val[f'Hits@{K}'])
 
+
     result_mrr_val = evaluate_mrr(evaluator_mrr, pos_val_pred, neg_val_pred.repeat(pos_val_pred.size(0), 1) )
     
     result['MRR'] = (result_mrr_val['MRR'])
+   
+
     val_pred = torch.cat([pos_val_pred, neg_val_pred])
     val_true = torch.cat([torch.ones(pos_val_pred.size(0), dtype=int), 
                             torch.zeros(neg_val_pred.size(0), dtype=int)])
+  
+
+
     result_auc_val = evaluate_auc(val_pred, val_true)
     
 
@@ -626,12 +620,14 @@ class Transformer(nn.Module):
         torch.nn.init.normal_(self.emb.weight.data, mean=0.0, std=config.init_std)
 
     def forward(self, x, anon_indices, source_nodes=None):
-      
+          
         batch_size, ctx_len, _ = x.shape
+
         x = self.emb(x)
         for depth, idx in enumerate(reversed(anon_indices)):
             for l in self.layers:
                 x = l(x, idx)
+            
             if depth < len(anon_indices) - 1:
                 x = x[:, -1, :]
                 x = F.rms_norm(x, [self.hidden_dim], eps=1e-5) * self.norm_weight
@@ -751,14 +747,15 @@ def evaluate_link_prediction(model, link_predictor, edge_index, neg_edge_index, 
 
 @torch.no_grad()
 def evaluate_and_log(
-    model, link_predictor, adj, X, config, 
+    model, link_predictor, adj, X, config,
     evaluator_hit, evaluator_mrr, device,
     train_pos_edge_index, train_neg_edge_index,
-    val_pos_edge_index, val_neg_edge_index, 
+    val_pos_edge_index, val_neg_edge_index,
     test_pos_edge_index, test_neg_edge_index,
-    epoch, best_val_eval_metric, best_val_metrics, 
+    epoch, best_val_eval_metric, best_val_metrics,
     best_test_metrics, best_val_epoch,
-    epochs_without_improvement, BEST_MODEL_PATH
+    epochs_without_improvement, BEST_MODEL_PATH,
+    global_batch_idx=None
 ):
     """
     Runs evaluation, logs metrics, saves the best model, and checks for early stopping.
@@ -796,10 +793,10 @@ def evaluate_and_log(
     )
     
     # --- 3. Log current epoch metrics to Wandb ---
-    wandb_train_log = {f'train_{k}': v for k, v in train_results.items()}
-    wandb_val_log = {f'val_{k}': v for k, v in val_results.items()}
-    wandb_test_log = {f'test_{k}': v for k, v in test_results.items()}
-    wandb.log({**wandb_train_log, **wandb_val_log, **wandb_test_log, 'epoch': epoch + 1}) # Log 1-based epoch
+    wandb_train_log = {f'train/{k}': v for k, v in train_results.items()}
+    wandb_val_log = {f'val/{k}': v for k, v in val_results.items()}
+    wandb_test_log = {f'test/{k}': v for k, v in test_results.items()}
+    wandb.log({**wandb_train_log, **wandb_val_log, **wandb_test_log}, step=global_batch_idx)
 
     # --- 4. Print to Console ---
     train_metrics_str = ", ".join([f"{k}: {v:.4f}" for k, v in train_results.items()])
@@ -812,13 +809,15 @@ def evaluate_and_log(
     # epoch's value is the highest seen so far for *that specific metric*.
     for k, v in val_results.items():
         best_val_metrics[k] = max(v, best_val_metrics.get(k, 0.0))
-        if wandb.run is not None:
-            wandb.run.summary[f"best_val_{k}"] = v
-    
+
     for k, v in test_results.items():
         best_test_metrics[k] = max(v, best_test_metrics.get(k, 0.0))
-        if wandb.run is not None:
-            wandb.run.summary[f"best_test_{k}"] = v
+
+    if wandb.run is not None:
+        wandb.run.summary.update(
+            {f"best_val_{k}": best_val_metrics[k] for k in val_results}
+            | {f"best_test_{k}": best_test_metrics[k] for k in test_results}
+        )
     # --- END OF NEW LOGIC ---
 
     # --- 6. Check for Best Model (based on val_eval_metric (E.g. MRR, AUC)) & Early Stopping ---
@@ -865,23 +864,40 @@ def trapezoidal_lr_schedule(global_batch_idx, max_lr, min_lr, warmup, cool, tota
     return lr * (world_size ** 1)
 
 
-if (config['use_deepwalk_embeds']):
-    run_display_name = f"pos_encoding_deepwalk_recurrent_steps_{config['recurrent_steps']}_bs_{config['global_batch_size']}_muon-max-lr_{config['muon_max_lr']}_adam_max_lr_{config['adam_max_lr']}_nwalks_{config['num_walks']}_wl_{config['walk_length']}_seed_{config['seed']}"
-elif (config['use_laplacian_pe']):
-    run_display_name = f"pos_encoding_laplacian_recurrent_steps_{config['recurrent_steps']}_bs_{config['global_batch_size']}_muon-max-lr_{config['muon_max_lr']}_adam_max_lr_{config['adam_max_lr']}_nwalks_{config['num_walks']}_wl_{config['walk_length']}_seed_{config['seed']}"
-else:
-    run_display_name = f"pos_encoding_False_recurrent_steps_{config['recurrent_steps']}_bs_{config['global_batch_size']}_muon-max-lr_{config['muon_max_lr']}_adam_max_lr_{config['adam_max_lr']}_nwalks_{config['num_walks']}_wl_{config['walk_length']}_seed_{config['seed']}"
+def setup_wandb(config: dict) -> str:
+    """Initialise W&B run and return the run ID."""
+    if config['use_deepwalk_embeds']:
+        pe_tag = 'pos_encoding_deepwalk'
+    elif config['use_laplacian_pe']:
+        pe_tag = 'pos_encoding_laplacian'
+    else:
+        pe_tag = 'pos_encoding_False'
 
-if (config["train_edge_downsample_ratio"] < 1.0):
-    run_display_name = f"{run_display_name}_edge_dws_{config["train_edge_downsample_ratio"]}"
-    
-if config['use_mlp']:
-    wandb.init(entity=config['wb_entity'], project=f"{config['data_name']}_rw-cwue_latest_dec_{config['seed']}",
-            group=f"{config['data_name']} Random Walk Link Prediction MLP", name=run_display_name, config=config)
-else:
-    wandb.init(entity=config['wb_entity'], project=f"{config['data_name']}_rw-cwue_latest_dec_{config['seed']}",
-            group=f"{config['data_name']} Random Walk Link Prediction Dot Product",name=run_display_name, config=config)
-run_id = wandb.run.id
+    run_name = (
+        f"{pe_tag}"
+        f"_recurrent_steps_{config['recurrent_steps']}"
+        f"_bs_{config['global_batch_size']}"
+        f"_muon-max-lr_{config['muon_max_lr']}"
+        f"_adam_max_lr_{config['adam_max_lr']}"
+        f"_nwalks_{config['num_walks']}"
+        f"_wl_{config['walk_length']}"
+        f"_seed_{config['seed']}"
+    )
+    if config['train_edge_downsample_ratio'] < 1.0:
+        run_name += f"_edge_dws_{config['train_edge_downsample_ratio']}"
+
+    predictor_tag = 'MLP' if config['use_mlp'] else 'Dot Product'
+    wandb.init(
+        entity=config['wb_entity'],
+        project=f"{config['data_name']}_rw-cwue_latest_dec_{config['seed']}",
+        group=f"{config['data_name']} Random Walk Link Prediction {predictor_tag}",
+        name=run_name,
+        config=config,
+    )
+    return wandb.run.id
+
+
+run_id = setup_wandb(config)
 save_dir = f"{config['data_name']}/checkpoints"
 
 os.makedirs(save_dir, exist_ok=True)
@@ -978,11 +994,17 @@ if config['use_mlp']:
 
 opt = SingleDeviceMuonWithAuxAdam(param_groups)
 
+# Snapshot of initial model weights/biases — used to track parameter drift
+initial_param_snapshot = {
+    name: param.detach().clone()
+    for name, param in model.named_parameters()
+    if param.requires_grad
+}
 
 best_val_eval_metric = 0.0
 best_val_epoch = 0
 epochs_without_improvement = 0
-epochs_eval_steps = 5 
+epochs_eval_steps = 5
 best_val_metrics = {}
 best_test_metrics = {}
 
@@ -993,6 +1015,8 @@ if config['recurrent_steps'] >1:
     print("Using Gradient Accumulation for higher recurrence case loss calculation!!!")
 else:
     accumulation_steps = 1 #Keep batch size same as global batch size
+
+prev_l2_param_drift = 0.0   # used to compute per-step rate of change of L2 drift
 
 pbar = tqdm.tqdm(total=total_batches)
 
@@ -1046,8 +1070,6 @@ for epoch in range(config['num_epochs']):
                 muon_lr = trapezoidal_lr_schedule(global_batch_idx, config['muon_max_lr'],
                                                config['muon_min_lr'], warmup, cool, total_batches)
                 p["lr"] = muon_lr
-
-        
 
         # 1. Get positive edges from DataLoader
         batch_pos_edges = batch_data[0].t().to(device)
@@ -1123,10 +1145,24 @@ for epoch in range(config['num_epochs']):
             
             opt.step()
             opt.zero_grad(set_to_none=True)
-            
+
+            # L2 norm of (current weights − initial weights) across all trainable params
+            with torch.no_grad():
+                l2_param_drift = torch.sqrt(sum(
+                    (param - initial_param_snapshot[name]).norm(2) ** 2
+                    for name, param in model.named_parameters()
+                    if name in initial_param_snapshot
+                )).item()
+
+            # Rate of change: how much the drift grew since the last optimizer step
+            l2_param_drift_delta = l2_param_drift - prev_l2_param_drift
+            prev_l2_param_drift = l2_param_drift
+
             avg_loss = running_loss / accumulation_steps
-           
-            wandb.log(dict(loss=avg_loss, mlp_grad_norm=mlp_grad_norm, step=global_batch_idx, lr=muon_lr))
+
+            wandb.log({"loss": avg_loss, "mlp_grad_norm": mlp_grad_norm, "lr": muon_lr,
+                       "model/L2_grad": l2_param_drift,
+                       "model/L2_grad_delta": l2_param_drift_delta}, step=global_batch_idx)
             running_loss = 0.0
             
         free, total = torch.cuda.mem_get_info(device)
@@ -1137,7 +1173,7 @@ for epoch in range(config['num_epochs']):
 
     if 'loss' in locals() and torch.isnan(loss):
         break
-    
+
     #----------EVALUATION------------------
     # Define the evaluation schedule
     is_eval_epoch = (epoch == 0) or \
@@ -1154,23 +1190,22 @@ for epoch in range(config['num_epochs']):
             epochs_without_improvement, 
             early_stop
         ) = evaluate_and_log(
-            model=model, link_predictor=link_predictor, adj=adj, X=X, config=config, 
+            model=model, link_predictor=link_predictor, adj=adj, X=X, config=config,
             evaluator_hit=evaluator_hit, evaluator_mrr=evaluator_mrr, device=device,
-            train_pos_edge_index=eval_train_pos_edge_index, train_neg_edge_index=val_neg_edge_index, 
-            val_pos_edge_index=val_pos_edge_index, val_neg_edge_index=val_neg_edge_index, 
+            train_pos_edge_index=eval_train_pos_edge_index, train_neg_edge_index=val_neg_edge_index,
+            val_pos_edge_index=val_pos_edge_index, val_neg_edge_index=val_neg_edge_index,
             test_pos_edge_index=test_pos_edge_index, test_neg_edge_index=test_neg_edge_index,
-            epoch=epoch, best_val_eval_metric=best_val_eval_metric, best_val_metrics=best_val_metrics, 
+            epoch=epoch, best_val_eval_metric=best_val_eval_metric, best_val_metrics=best_val_metrics,
             best_test_metrics=best_test_metrics, best_val_epoch=best_val_epoch,
-            epochs_without_improvement=epochs_without_improvement, 
-            BEST_MODEL_PATH=BEST_MODEL_PATH
+            epochs_without_improvement=epochs_without_improvement,
+            BEST_MODEL_PATH=BEST_MODEL_PATH,
+            global_batch_idx=global_batch_idx
         )
         if early_stop:
             break # Break out of the main training loop
     
 pbar.close()
 
-
-    
 if torch.cuda.is_available():
     peak_bytes = torch.cuda.max_memory_allocated()
     peak_gib = peak_bytes / (1024**3)
@@ -1180,13 +1215,11 @@ if torch.cuda.is_available():
     print(f"   Current vRAM: {current_gib:.3f} GiB")
     
 
-wandb_best_val_log = {f'best_val_{k}': v for k, v in best_val_metrics.items()}
-wandb_best_test_log = {f'best_test_{k}': v for k, v in best_test_metrics.items()}
-wandb.log({
-    **wandb_best_val_log, 
-    **wandb_best_test_log, 
-    'best_val_epoch': best_val_epoch
-})
+wandb.run.summary.update(
+    {f"best_val_{k}": v for k, v in best_val_metrics.items()}
+    | {f"best_test_{k}": v for k, v in best_test_metrics.items()}
+    | {"best_val_epoch": best_val_epoch}
+)
 print(f"Best Validation {config['eval_metric']}: {best_val_eval_metric:.4f} at epoch {best_val_epoch}")
 best_val_metrics_str = ", ".join([f"{k}: {v:.4f}" for k, v in best_val_metrics.items()])
 best_test_metrics_str = ", ".join([f"{k}: {v:.4f}" for k, v in best_test_metrics.items()])
@@ -1243,6 +1276,7 @@ else:
     results_df.to_csv(f"{config['data_name']}/experiment_results_link_prediction_updated_final.csv", mode='w', header=True, index=False)
 print(f"Saved results to {csv_filename}")
 wandb.finish()
+
 
 
 # uv run link_prediction_HeART_recurrence.py --data_name Cora --data_root ./data/Cora --global_batch_size 16 --recurrent_steps 2
