@@ -1,2 +1,0 @@
-model_data_seed,best_val_epoch,best_val_Hits@1,best_val_Hits@10,best_val_Hits@50,best_val_Hits@100,best_val_MRR,best_val_AUC,best_val_AP,best_test_Hits@1,best_test_Hits@10,best_test_Hits@50,best_test_Hits@100,best_test_MRR,best_test_AUC,best_test_AP
-NeuralWalker_Cora_LinkPred_2025,75,0.0834,0.3641,0.6814,0.7914,0.1687,0.916,0.9127,0.4411,0.6122,0.8441,0.9354,0.4771,0.901,0.9128
