@@ -49,3 +49,5 @@ wandb/
 **/*.pt
 ablation_study_paper/.venv
 **/dataset
+**/logs
+**/checkpoints
