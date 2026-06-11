@@ -1,0 +1,35 @@
+program: run_demo.py
+method: grid
+
+metric:
+  name: val/MRR
+  goal: maximize
+
+parameters:
+  d_state:
+    values: [8, 16, 32]
+  d_conv:
+    values: [2, 4]
+  expand:
+    values: [2, 4]
+
+  # fixed
+  walk_encoder:      { value: mamba  }
+  walk_length:       { value: 16     }
+  window_size:       { value: 8      }
+  sample_rate:       { value: 1.0    }
+  num_layers:        { value: 2      }
+  hidden_dim:        { value: 128    }
+  dropout:           { value: 0.1    }
+  mlp_num_layers:    { value: 3      }
+  mlp_dropout:       { value: 0.1    }
+  neg_sample_ratio:  { value: 1      }
+  lr:                { value: 0.001  }
+  global_batch_size: { value: 64     }
+  grad_clip_norm:    { value: 0.1    }
+  num_heads:         { value: 4      }
+  mlp_ratio:         { value: 1      }
+  seed:              { value: 2025   }
+  num_epochs:        { value: 300    }
+  patience:          { value: 20     }
+  wb_project:        { value: neuralwalker-mamba-phase1 }

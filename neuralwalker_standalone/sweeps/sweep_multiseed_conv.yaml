@@ -1,0 +1,55 @@
+program: run_demo.py
+method: grid
+metric:
+  name: val/MRR
+  goal: maximize
+parameters:
+  seed:
+    values:
+    - 2025
+    - 2026
+    - 2027
+    - 2028
+    - 2029
+  wb_project:
+    value: neuralwalker-multiseed
+  walk_encoder:
+    value: conv
+  walk_length:
+    value: 8
+  window_size:
+    value: 8
+  num_layers:
+    value: 2
+  hidden_dim:
+    value: 128
+  dropout:
+    value: 0.1
+  mlp_num_layers:
+    value: 3
+  mlp_dropout:
+    value: 0.1
+  lr:
+    value: 0.001
+  global_batch_size:
+    value: 64
+  grad_clip_norm:
+    value: 0.1
+  neg_sample_ratio:
+    value: 5
+  sample_rate:
+    value: 1.0
+  d_state:
+    value: 16
+  d_conv:
+    value: 9
+  expand:
+    value: 2
+  num_heads:
+    value: 4
+  mlp_ratio:
+    value: 1
+  num_epochs:
+    value: 300
+  patience:
+    value: 20

@@ -105,7 +105,7 @@ def get_config():
     run = parser.add_argument_group('Run')
     run.add_argument('--seed',             type=int,   default=2025)
     run.add_argument('--num_epochs',       type=int,   default=300)
-    run.add_argument('--global_batch_size',type=int,   default=256)
+    run.add_argument('--global_batch_size',type=int,   default=64)
     run.add_argument('--patience',         type=int,   default=20)
     run.add_argument('--eval_metric',      type=str,   default='MRR')
 
@@ -117,12 +117,20 @@ def get_config():
 
     arch = parser.add_argument_group('Architecture')
     arch.add_argument('--hidden_dim',     type=int,   default=128)
-    arch.add_argument('--num_layers',     type=int,   default=1)
-    arch.add_argument('--walk_length',    type=int,   default=8)
-    arch.add_argument('--window_size',    type=int,   default=4)
+    arch.add_argument('--num_layers',     type=int,   default=2)
+    arch.add_argument('--walk_length',    type=int,   default=16)
+    arch.add_argument('--window_size',    type=int,   default=8)
+    arch.add_argument('--sample_rate',    type=float, default=1.0)
     arch.add_argument('--dropout',        type=float, default=0.1)
     arch.add_argument('--mlp_num_layers', type=int,   default=3)
     arch.add_argument('--mlp_dropout',    type=float, default=0.1)
+    arch.add_argument('--walk_encoder',   type=str,   default='mamba',
+                      choices=['conv', 'mamba', 's4', 'transformer'])
+    arch.add_argument('--num_heads',      type=int,   default=4)
+    arch.add_argument('--mlp_ratio',      type=int,   default=1)
+    arch.add_argument('--d_state',        type=int,   default=16)
+    arch.add_argument('--d_conv',         type=int,   default=4)
+    arch.add_argument('--expand',         type=int,   default=2)
 
     opt = parser.add_argument_group('Optimizer')
     opt.add_argument('--lr',             type=float, default=1e-3)
@@ -304,25 +312,21 @@ def evaluate_and_log(
         step=global_batch_idx,
     )
 
-    for k, v in val_results.items():
-        best_val_metrics[k]  = max(v, best_val_metrics.get(k,  0.0))
-    for k, v in test_results.items():
-        best_test_metrics[k] = max(v, best_test_metrics.get(k, 0.0))
-
-    if wandb.run is not None:
-        wandb.run.summary.update(
-            {f'best_val_{k}':  best_val_metrics[k]  for k in val_results}
-          | {f'best_test_{k}': best_test_metrics[k] for k in test_results}
-        )
-
     val_metric = val_results[config['eval_metric']]
     early_stop = False
 
     if val_metric > best_val_eval_metric:
         best_val_eval_metric = val_metric
         best_val_epoch = epoch + 1
+        # snapshot val AND test metrics at the best val epoch
+        best_val_metrics  = dict(val_results)
+        best_test_metrics = dict(test_results)
         if wandb.run is not None:
-            wandb.run.summary['best_val_epoch'] = best_val_epoch
+            wandb.run.summary.update(
+                {f'best_val_{k}':  best_val_metrics[k]  for k in val_results}
+              | {f'best_test_{k}': best_test_metrics[k] for k in test_results}
+              | {'best_val_epoch': best_val_epoch}
+            )
         torch.save({
             'encoder_state_dict': encoder.state_dict(),
             'decoder_state_dict': decoder.state_dict(),
@@ -398,7 +402,7 @@ def setup_walks(data, train_pos, config, device):
         edge_index=train_pos.cpu(),
         num_nodes=data.num_nodes,
     )
-    sampler   = RandomWalkSampler(length=config['walk_length'], window_size=config['window_size'])
+    sampler   = RandomWalkSampler(length=config['walk_length'], window_size=config['window_size'], sample_rate=config['sample_rate'])
     walk_data = sampler(walk_input)
     walk_data.batch = torch.zeros(data.num_nodes, dtype=torch.long)
     walk_data = walk_data.to(device)
@@ -422,10 +426,16 @@ def setup_model_and_optimizer(config, in_node_dim, device):
         in_edge_dim=None,
         hidden_size=config['hidden_dim'],
         num_layers=config['num_layers'],
-        walk_encoder='conv',
+        walk_encoder=config['walk_encoder'],
         walk_length=config['walk_length'],
         window_size=config['window_size'],
         dropout=config['dropout'],
+        vn_norm_type='layernorm',
+        num_heads=config['num_heads'],
+        mlp_ratio=config['mlp_ratio'],
+        d_state=config['d_state'],
+        d_conv=config['d_conv'],
+        expand=config['expand'],
     ).to(device)
 
     decoder = LinkPredictorMLP(

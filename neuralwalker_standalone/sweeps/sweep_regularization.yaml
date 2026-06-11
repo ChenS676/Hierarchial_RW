@@ -1,0 +1,28 @@
+program: run_demo.py
+method: grid
+
+metric:
+  name: val/MRR
+  goal: maximize
+
+parameters:
+  hidden_dim:
+    values: [64, 128, 256]
+  dropout:
+    values: [0.0, 0.1, 0.3]
+  mlp_num_layers:
+    values: [2, 3]
+
+  # fixed — best from previous sweeps
+  lr:                { value: 0.001 }
+  global_batch_size: { value: 64    }
+  walk_length:       { value: 32    }
+  window_size:       { value: 4     }
+  num_layers:        { value: 1     }
+
+  seed:           { value: 2025 }
+  num_epochs:     { value: 300  }
+  patience:       { value: 20   }
+  mlp_dropout:    { value: 0.1  }
+  grad_clip_norm: { value: 0.1  }
+  wb_project:     { value: neuralwalker-cora-sweep-reg }

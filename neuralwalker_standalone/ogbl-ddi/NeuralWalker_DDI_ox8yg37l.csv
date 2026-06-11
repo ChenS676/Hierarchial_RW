@@ -1,0 +1,2 @@
+run_id,seed,walk_encoder,best_val_epoch,best_val_Hits@10,best_val_Hits@20,best_val_Hits@30,best_val_Hits@50,best_test_Hits@10,best_test_Hits@20,best_test_Hits@30,best_test_Hits@50
+ox8yg37l,2025,conv,10,0.182996351759321,0.20922323187678385,0.2168193633932384,0.2336147547738016,0.16683771696544283,0.18540853553476316,0.19516214819198585,0.20385949404070747

@@ -121,11 +121,30 @@ class GINConv(nn.Module):
         return x + self.model(x, edge_index, edge_attr), edge_attr
 
 
+class GINConvNoEdge(nn.Module):
+    """GIN without edge features — for graphs with no edge attributes."""
+    def __init__(self, hidden_size, dropout=0.0):
+        super().__init__()
+        mlp = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.BatchNorm1d(hidden_size),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_size, hidden_size),
+        )
+        self.model = gnn.GINConv(mlp, train_eps=True)
+
+    def forward(self, x, edge_index, edge_attr):
+        return x + self.model(x, edge_index), edge_attr
+
+
 def get_gnn_layer(gnn_type, hidden_size, dropout=0.0):
     if gnn_type is None:
         return None
     if gnn_type == "gin":
         return GINConv(hidden_size, dropout)
+    elif gnn_type == "gin_no_edge":
+        return GINConvNoEdge(hidden_size, dropout)
     elif gnn_type == "gcn":
         return GCNConv(hidden_size)
     elif gnn_type == "gatedgcn":

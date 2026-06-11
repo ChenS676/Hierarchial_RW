@@ -77,7 +77,7 @@ class Attention(nn.Module):
             q, k = self.rot_emb(q, k)
 
         if padding_mask is not None:
-            padding_mask = padding_mask.view(B, 1, N, 1) * padding_mask.view(B, 1, 1, N)
+            padding_mask = padding_mask.view(B, 1, 1, N)  # mask keys only — avoids all-masked rows → NaN
 
         x = F.scaled_dot_product_attention(
             q, k, v,

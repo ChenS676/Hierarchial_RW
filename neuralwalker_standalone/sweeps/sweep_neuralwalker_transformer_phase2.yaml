@@ -1,0 +1,31 @@
+program: run_demo.py
+method: grid
+
+metric:
+  name: val/MRR
+  goal: maximize
+
+parameters:
+  num_layers:
+    values: [1, 2]
+  dropout:
+    values: [0.0, 0.1, 0.2]
+
+  # fixed — best from phase 1
+  walk_encoder:      { value: transformer }
+  num_heads:         { value: 8     }
+  mlp_ratio:         { value: 2     }
+  walk_length:       { value: 8     }
+  lr:                { value: 0.0003 }
+  global_batch_size: { value: 64    }
+  window_size:       { value: 8     }
+  hidden_dim:        { value: 128   }
+  mlp_num_layers:    { value: 3     }
+  mlp_dropout:       { value: 0.1   }
+  neg_sample_ratio:  { value: 1     }
+  sample_rate:       { value: 1.0   }
+  grad_clip_norm:    { value: 0.1   }
+  seed:              { value: 2025  }
+  num_epochs:        { value: 300   }
+  patience:          { value: 20    }
+  wb_project:        { value: neuralwalker-transformer-phase2 }

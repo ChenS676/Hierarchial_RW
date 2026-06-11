@@ -1,0 +1,32 @@
+program: run_demo.py
+
+# Best NeuralWalker-Conv config on Cora link prediction
+# Tuned via grid search across lr/bs, arch, sampling sweeps
+# Best val MRR: 0.4051
+
+parameters:
+  # Sequence layer
+  walk_encoder:      { value: conv   }
+
+  # Walk
+  walk_length:       { value: 8      }
+  window_size:       { value: 8      }
+  sample_rate:       { value: 1.0    }
+
+  # Architecture
+  num_layers:        { value: 2      }
+  hidden_dim:        { value: 128    }
+  dropout:           { value: 0.1    }
+  mlp_num_layers:    { value: 3      }
+  mlp_dropout:       { value: 0.1    }
+
+  # Optimizer
+  lr:                { value: 0.001  }
+  global_batch_size: { value: 64     }
+  grad_clip_norm:    { value: 0.1    }
+  neg_sample_ratio:  { value: 5      }
+
+  # Training
+  num_epochs:        { value: 300    }
+  patience:          { value: 20     }
+  wb_project:        { value: neuralwalker-multiseed }

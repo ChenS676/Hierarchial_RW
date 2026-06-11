@@ -1,0 +1,36 @@
+program: run_demo.py
+
+# Best NeuralWalker-Mamba config on Cora link prediction
+# Tuned via 2-phase grid search (sweep_neuralwalker_mamba_phase1/2.yaml)
+# Best val MRR: 0.3478 (phase 2) / 0.3523 (phase 1)
+
+parameters:
+  # Sequence layer
+  walk_encoder:      { value: mamba  }
+  d_state:           { value: 8      }
+  d_conv:            { value: 4      }
+  expand:            { value: 2      }
+
+  # Walk
+  walk_length:       { value: 8      }
+  window_size:       { value: 8      }
+  sample_rate:       { value: 1.0    }
+
+  # Architecture
+  num_layers:        { value: 2      }
+  hidden_dim:        { value: 128    }
+  dropout:           { value: 0.0    }
+  mlp_num_layers:    { value: 3      }
+  mlp_dropout:       { value: 0.1    }
+
+  # Optimizer
+  lr:                { value: 0.001  }
+  global_batch_size: { value: 64     }
+  grad_clip_norm:    { value: 0.1    }
+  neg_sample_ratio:  { value: 1      }
+
+  # Training
+  seed:              { value: 2025   }
+  num_epochs:        { value: 300    }
+  patience:          { value: 20     }
+  wb_project:        { value: neuralwalker-mamba-final }

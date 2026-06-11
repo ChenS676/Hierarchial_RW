@@ -86,6 +86,7 @@ class NeuralWalkerEncoder(nn.Module):
                 vn_norm_first=kwargs.get('vn_norm_first', True),
                 vn_norm_type=kwargs.get('vn_norm_type', 'batchnorm'),
                 vn_pooling=kwargs.get('vn_pooling', 'sum'),
+                update_edges=kwargs.get('update_edges', in_edge_dim is not None),
             ) for i in range(num_layers)
         ])
 

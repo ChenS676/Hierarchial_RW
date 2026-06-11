@@ -26,9 +26,11 @@ class WalkEncoder(nn.Module):
         window_size=8,
         bidirection=False,
         layer_idx=None,
+        update_edges=True,
     ):
         super().__init__()
 
+        self.update_edges = update_edges
         self.use_positional_encoding = use_positional_encoding
         walk_pe_dim = window_size * 2 - 1 if use_positional_encoding else 0
         self.bidirection = bidirection
@@ -54,7 +56,7 @@ class WalkEncoder(nn.Module):
         if sequence_layer_type == "conv":
             self.seq_layer = nn.Sequential(
                 Rearrange("a b c -> a c b"),
-                nn.Conv1d(hidden_size, hidden_size, d_conv, groups=hidden_size, padding=d_conv // 2),
+                nn.Conv1d(hidden_size, hidden_size, d_conv, groups=hidden_size, padding='same'),
                 nn.BatchNorm1d(hidden_size),
                 nn.ReLU(),
                 nn.Conv1d(hidden_size, hidden_size, 1, padding=0),
@@ -147,17 +149,17 @@ class WalkEncoder(nn.Module):
         x = x + self.out_node_proj(node_agg)
         del node_agg
 
-        edge_agg = scatter_mean(
-            walk_x[~walk_edge_mask],
-            walk_edge_index[~walk_edge_mask],
-            dim=0,
-            dim_size=batch.edge_index.shape[-1],
-        )
-
-        if edge_attr is not None:
-            edge_attr = edge_attr + self.out_edge_proj(edge_agg)
-        else:
-            edge_attr = self.out_edge_proj(edge_agg)
+        if self.update_edges:
+            edge_agg = scatter_mean(
+                walk_x[~walk_edge_mask],
+                walk_edge_index[~walk_edge_mask],
+                dim=0,
+                dim_size=batch.edge_index.shape[-1],
+            )
+            if edge_attr is not None:
+                edge_attr = edge_attr + self.out_edge_proj(edge_agg)
+            else:
+                edge_attr = self.out_edge_proj(edge_agg)
 
         batch.x = x
         batch.edge_attr = edge_attr
@@ -189,6 +191,7 @@ class NeuralWalkerLayer(nn.Module):
         vn_norm_first=True,
         vn_norm_type='batchnorm',
         vn_pooling='sum',
+        update_edges=True,
     ):
         super().__init__()
 
@@ -209,6 +212,7 @@ class NeuralWalkerLayer(nn.Module):
             window_size=window_size,
             bidirection=bidirection,
             layer_idx=layer_idx,
+            update_edges=update_edges,
         )
 
         self.mp_layer = MessagePassingLayer(
