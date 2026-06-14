@@ -190,19 +190,17 @@ def binary_cross_entropy_loss(pos_scores, neg_scores):
 
 
 def trapezoidal_lr_schedule(global_batch_idx, max_lr, min_lr, warmup, cool, total_batches):
-    if global_batch_idx <= warmup:
+    if warmup > 0 and global_batch_idx <= warmup:
         return (global_batch_idx / warmup) * (max_lr - min_lr) + min_lr
     if global_batch_idx <= total_batches - cool:
         return max_lr
     return ((total_batches - global_batch_idx) / cool) * (max_lr - min_lr) + min_lr
 
 
-def reset_batch(d, rx):
+def reset_batch(d, rx, raw_edge_attr=None):
     """Restore raw node features and clear all mutable inter-pass state."""
     d.x = rx.clone()
-    # WalkEncoder writes batch.edge_attr each forward; resetting prevents the
-    # stale computation graph from leaking into the next forward pass.
-    d.edge_attr = None
+    d.edge_attr = raw_edge_attr
     if hasattr(d, 'virtual_node') and d.virtual_node is not None:
         d.virtual_node = None
     return d
@@ -235,7 +233,7 @@ def get_metric_score(evaluator_hit, evaluator_mrr, pos_val_pred, neg_val_pred, k
 # =============================================================================
 
 @torch.no_grad()
-def test_edge(encoder, decoder, walk_data, raw_x, config, edge_index, batch_size, device):
+def test_edge(encoder, decoder, walk_data, raw_x, raw_edge_attr, config, edge_index, batch_size, device):
     """
     NeuralWalker adaptation of Cora_clean's test_edge.
 
@@ -246,9 +244,9 @@ def test_edge(encoder, decoder, walk_data, raw_x, config, edge_index, batch_size
     encoder.eval()
     decoder.eval()
 
-    reset_batch(walk_data, raw_x)
+    reset_batch(walk_data, raw_x, raw_edge_attr)
     h = encoder(walk_data).float()    # [N, hidden_size]
-    reset_batch(walk_data, raw_x)     # clear stale edge_attr for next call
+    reset_batch(walk_data, raw_x, raw_edge_attr)     # clear stale graph for next call
 
     src, dst = edge_index[0], edge_index[1]
     all_scores = []
@@ -261,15 +259,15 @@ def test_edge(encoder, decoder, walk_data, raw_x, config, edge_index, batch_size
 
 @torch.no_grad()
 def evaluate_link_prediction(
-    encoder, decoder, walk_data, raw_x, config,
+    encoder, decoder, walk_data, raw_x, raw_edge_attr, config,
     pos_edge_index, neg_edge_index,
     evaluator_hit, evaluator_mrr, device, eval_batch_size=512,
 ):
     encoder.eval()
     decoder.eval()
-    pos_scores = test_edge(encoder, decoder, walk_data, raw_x, config,
+    pos_scores = test_edge(encoder, decoder, walk_data, raw_x, raw_edge_attr, config,
                            pos_edge_index, eval_batch_size, device)
-    neg_scores = test_edge(encoder, decoder, walk_data, raw_x, config,
+    neg_scores = test_edge(encoder, decoder, walk_data, raw_x, raw_edge_attr, config,
                            neg_edge_index, eval_batch_size, device)
     return get_metric_score(
         evaluator_hit, evaluator_mrr,
@@ -281,7 +279,7 @@ def evaluate_link_prediction(
 
 @torch.no_grad()
 def evaluate_and_log(
-    encoder, decoder, walk_data, raw_x, config,
+    encoder, decoder, walk_data, raw_x, raw_edge_attr, config,
     evaluator_hit, evaluator_mrr, device,
     train_pos_edge_index, train_neg_edge_index,
     val_pos_edge_index,   val_neg_edge_index,
@@ -297,7 +295,7 @@ def evaluate_and_log(
 
     def ev(pos, neg):
         return evaluate_link_prediction(
-            encoder, decoder, walk_data, raw_x, config,
+            encoder, decoder, walk_data, raw_x, raw_edge_attr, config,
             pos, neg, evaluator_hit, evaluator_mrr, device, eval_bs,
         )
 
@@ -410,11 +408,22 @@ def setup_walks(data, train_pos, config, device):
     raw_x = data.x.to(device).clone()
     walk_data.x = raw_x.clone()
 
+    # Edge features: cosine similarity of node TF-IDF features per edge.
+    # Falls back to constant ones if node features are binary/one-hot (no meaningful similarity).
+    src_cpu, dst_cpu = walk_data.edge_index.cpu()
+    x_cpu = data.x.cpu()
+    x_norm = F.normalize(x_cpu, p=2, dim=1)
+    cos_sim = (x_norm[src_cpu] * x_norm[dst_cpu]).sum(dim=1, keepdim=True).clamp(0.0)
+    raw_edge_attr = cos_sim.to(device)
+    walk_data.edge_attr = raw_edge_attr
+
     print(
         f"Walks:  walk_node_idx {tuple(walk_data.walk_node_idx.shape)}  "
         f"walk_node_id_encoding {tuple(walk_data.walk_node_id_encoding.shape)}"
     )
-    return walk_data, raw_x
+    print(f"Edge attr (cosine sim): mean={raw_edge_attr.mean():.4f}  std={raw_edge_attr.std():.4f}  "
+          f"non-zero={( raw_edge_attr > 0).sum().item()}/{raw_edge_attr.size(0)}")
+    return walk_data, raw_x, raw_edge_attr
 
 
 def setup_model_and_optimizer(config, in_node_dim, device):
@@ -423,7 +432,8 @@ def setup_model_and_optimizer(config, in_node_dim, device):
     encoder = NeuralWalkerEncoder(
         in_node_dim=in_node_dim,
         node_embed=False,
-        in_edge_dim=None,
+        in_edge_dim=1,
+        edge_embed=False,        # continuous ones → use nn.Linear, not nn.Embedding
         hidden_size=config['hidden_dim'],
         num_layers=config['num_layers'],
         walk_encoder=config['walk_encoder'],
@@ -493,7 +503,7 @@ def main():
     data, train_pos, val_pos, val_neg, test_pos, test_neg = setup_data(config, device)
 
     # ---------- Walks (offline, once on training graph) ----------
-    walk_data, raw_x = setup_walks(data, train_pos, config, device)
+    walk_data, raw_x, raw_edge_attr = setup_walks(data, train_pos, config, device)
 
     # ---------- W&B ----------
     run_id = setup_wandb(config, data.x.size(1))
@@ -549,7 +559,7 @@ def main():
         optimizer.zero_grad(set_to_none=True)
 
         # Full-graph encoder forward (NeuralWalker processes all N nodes at once)
-        reset_batch(walk_data, raw_x)
+        reset_batch(walk_data, raw_x, raw_edge_attr)
         h = encoder(walk_data).float()   # [N, hidden_size]
 
         # Negative sampling (same as Cora_clean.py)
@@ -604,7 +614,7 @@ def main():
                 best_val_epoch, epochs_without_improvement, early_stop,
             ) = evaluate_and_log(
                 encoder=encoder, decoder=decoder,
-                walk_data=walk_data, raw_x=raw_x, config=config,
+                walk_data=walk_data, raw_x=raw_x, raw_edge_attr=raw_edge_attr, config=config,
                 evaluator_hit=evaluator_hit, evaluator_mrr=evaluator_mrr, device=device,
                 train_pos_edge_index=eval_train_pos,
                 train_neg_edge_index=val_neg,   # fixed negatives for train eval (Cora_clean style)
@@ -680,3 +690,7 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+
+# python run_ddi.py --walk_encoder conv --num_epochs 500 --patience 50 --hidden_dim 128 --lr 0.005 --train_subsample 200000 --wb_project neuralwalker-ddi

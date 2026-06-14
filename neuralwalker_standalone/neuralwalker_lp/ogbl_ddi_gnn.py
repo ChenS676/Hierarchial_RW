@@ -95,8 +95,12 @@ class LinkPredictor(torch.nn.Module):
 
 def train(model, predictor, x, adj_t, split_edge, optimizer, batch_size):
 
-    row, col, _ = adj_t.coo()
-    edge_index = torch.stack([col, row], dim=0)
+    # support both torch_sparse SparseTensor and PyG CSR tensor
+    if hasattr(adj_t, 'coo'):
+        row, col, _ = adj_t.coo()
+        edge_index = torch.stack([col, row], dim=0)
+    else:
+        edge_index = split_edge['train']['edge'].t().contiguous().to(x.device)
 
     model.train()
     predictor.train()
@@ -221,6 +225,7 @@ def main():
     device = torch.device(device)
 
     dataset = PygLinkPropPredDataset(name='ogbl-ddi',
+                                     root='data/ogbl_ddi',
                                      transform=T.ToSparseTensor())
     data = dataset[0]
     adj_t = data.adj_t.to(device)
